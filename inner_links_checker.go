@@ -35,26 +35,28 @@ func checkLink(link string) {
 /*
 	Finds all links (href) on page and it's children
  */
-func findAllLinks(link string) {
+func findAllLinks(linkToRoot string) {
 
-	var visited = make(map[string]bool)
-	visited[link] = true
+	var queue= make(map[string]bool)
+	var known= make(map[string]bool)
 
-	hostname := getHostname(link)
-	var queue = findLinksInSource(make(map[string]bool), parsePage(fetchPage(link)), hostname)
+	queue[linkToRoot] = true
+	known[linkToRoot] = true
 
-	fmt.Printf("Starting processing. Current queue: %v\n", queue)
-
-	for l := range queue {
-		fmt.Printf("Checking page %s. \n", l)
-		q1 := findLinksInSource(queue, parsePage(fetchPage(l)), hostname)
-		for c := range q1 {
-			if !visited[c] {
-				fmt.Printf("New unvisited page found %s. Adding to queue\n", c)
-				queue[c] = true
+	hostname := getHostname(linkToRoot)
+	for len(queue) > 0 {
+		for link := range queue {
+			fmt.Printf("Checking page %s\n", link)
+			linksOnCurrent := findLinksInSource(known, parsePage(fetchPage(link)), hostname)
+			for childLink := range linksOnCurrent {
+				if !known[childLink] {
+					fmt.Printf("New unvisited page found %s\n", childLink)
+					queue[childLink] = true
+					known[childLink] = true
+				}
 			}
+			delete(queue, link)
 		}
-		visited[l] = true
 	}
 
 }
@@ -74,23 +76,30 @@ func parsePage(page []byte) *html.Node {
 	Find all links on page
  */
 func findLinksInSource(links map[string]bool, n *html.Node, hostname string) map[string]bool {
+	var known = copyMap(links)
 	if n.FirstChild != nil {
-		links = findLinksInSource(links, n.FirstChild, hostname)
+		known = findLinksInSource(known, n.FirstChild, hostname)
 	}
 	if n.NextSibling != nil {
-		links = findLinksInSource(links, n.NextSibling, hostname)
+		known = findLinksInSource(known, n.NextSibling, hostname)
 	}
 	if n.Type == html.ElementNode && n.Data == "a" {
 		for _, a := range n.Attr {
 			if a.Key == "href" && strings.Contains(a.Val, hostname) && !links[a.Val] {
-
-				links[a.Val] = true
+				known[a.Val] = true
 			}
 		}
 	}
-	return links
+	return known
 }
 
+func copyMap(src map[string]bool) map[string]bool {
+	var dst = make(map[string]bool)
+	for k,v := range src {
+		dst[k] = v
+	}
+	return dst
+}
 /*
 	Returns hostname. Ex: http://example.org/lala/ -> example.org
  */
